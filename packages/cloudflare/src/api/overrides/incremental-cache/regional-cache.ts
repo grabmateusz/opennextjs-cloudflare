@@ -134,6 +134,10 @@ class RegionalCache implements IncrementalCache {
 			if (cachedResponse) {
 				debugCache("RegionalCache", `get ${key} -> cached response`);
 
+				const responseJson: Record<string, unknown> = await cachedResponse.json();
+				const cachedLastModified =
+					typeof responseJson.lastModified === "number" ? responseJson.lastModified : undefined;
+
 				// Re-fetch from the store and update the regional cache in the background.
 				// Note: this is only useful when the Cache API is not purged automatically.
 				if (this.opts.shouldLazilyUpdateOnCacheHit) {
@@ -141,14 +145,24 @@ class RegionalCache implements IncrementalCache {
 						this.store.get(key, cacheType).then(async (rawEntry) => {
 							const { value, lastModified } = rawEntry ?? {};
 
-							if (value && typeof lastModified === "number") {
+							// Only refresh the regional cache when the store holds a strictly newer entry.
+							//
+							// Re-writing the same (stale) entry would reset its Cache API TTL while keeping
+							// its old `lastModified`, pinning it as stale. With SWR `revalidateTag` (Next 16+)
+							// the entry is then reported stale on every request, triggering an endless stream
+							// of background revalidations (see issue #1281). Comparing `lastModified` also
+							// avoids overwriting a freshly revalidated entry with a stale store read caused by
+							// background write-ordering races.
+							if (
+								value &&
+								typeof lastModified === "number" &&
+								(cachedLastModified === undefined || lastModified > cachedLastModified)
+							) {
 								await this.putToCache({ key, cacheType, entry: { value, lastModified } });
 							}
 						})
 					);
 				}
-
-				const responseJson: Record<string, unknown> = await cachedResponse.json();
 
 				return {
 					...responseJson,
