@@ -7,7 +7,7 @@ on:
 
 jobs:
   release:
-    if: ${{ github.repository_owner == 'opennextjs' }}
+    if: ${{ github.repository_owner == 'opennextjs' || github.repository_owner == 'grabmateusz' }}
     name: Publish builder package
     runs-on: ubuntu-latest
 
